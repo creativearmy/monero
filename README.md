@@ -1,6 +1,6 @@
 # Monero Mining Pool Edition forked by MONGOOSE team
 
-This forked repository is part of a mining pool system codebase built by MONGOOSE team. We intend to keep our fork in sync with [monero-project/monero](https://github.com/monero-project/monero). In the following architecture diagram, the modules colored in burgundy are included in this public GitHub repository. The rest of our mining pool system is kept in a private repository. 
+This forked repository is part of a mining pool system codebase built by MONGOOSE team. We intend to keep our fork in sync with [monero-project/monero](https://github.com/monero-project/monero). In the following architecture diagram, the modules colored in burgundy are included in this GitHub repository and [creativearmy/xmr-stak](https://github.com/creativearmy/xmr-stak)
 
 # Architecture Overview
 
