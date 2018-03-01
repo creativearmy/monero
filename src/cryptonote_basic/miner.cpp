@@ -222,6 +222,10 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------------
   bool miner::init(const boost::program_options::variables_map& vm, bool testnet)
   {
+    // configure node agent port to push mining work to
+	m_mining_pool_node_agent_port = 3001;
+	if (testnet) m_mining_pool_node_agent_port = 3002;
+	
     if(command_line::has_arg(vm, arg_extra_messages))
     {
       std::string buff;
@@ -534,7 +538,7 @@ namespace cryptonote
           json.Accept(writer);
 		  
 	  	  boost::asio::io_service ios;
-	      boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::address::from_string("127.0.0.1"), 3001);
+	      boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::address::from_string("127.0.0.1"), m_mining_pool_node_agent_port);
 	      boost::asio::ip::tcp::socket socket(ios);
 	  	  socket.connect(endpoint);
 		  

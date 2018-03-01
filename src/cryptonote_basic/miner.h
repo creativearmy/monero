@@ -182,6 +182,7 @@ namespace cryptonote
 	uint32_t m_mining_pool_found_nonce;
 	uint32_t m_mining_pool_nonce;
 	uint32_t m_mining_pool_template_no;
+	uint16_t m_mining_pool_node_agent_port;
 	
   public: 
 	bool set_mining_pool_nonce(uint32_t template_no, uint32_t nonce);
