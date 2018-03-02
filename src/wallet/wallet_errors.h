@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -50,6 +50,8 @@ namespace tools
     //       wallet_internal_error
     //         unexpected_txin_type
     //         wallet_not_initialized
+    //       multisig_export_needed
+    //       multisig_import_needed
     //   std::logic_error
     //     wallet_logic_error *
     //       file_exists
@@ -58,6 +60,7 @@ namespace tools
     //       file_save_error
     //       invalid_password
     //       invalid_priority
+    //       invalid_multisig_seed
     //       refresh_error *
     //         acc_outs_lookup_error
     //         block_parse_error
@@ -186,7 +189,22 @@ namespace tools
       {
       }
     };
-
+    //----------------------------------------------------------------------------------------------------
+    struct multisig_export_needed : public wallet_runtime_error
+    {
+      explicit multisig_export_needed(std::string&& loc)
+        : wallet_runtime_error(std::move(loc), "This signature was made with stale data: export fresh multisig data, which other participants must then use")
+      {
+      }
+    };
+    //----------------------------------------------------------------------------------------------------
+    struct multisig_import_needed : public wallet_runtime_error
+    {
+      explicit multisig_import_needed(std::string&& loc)
+        : wallet_runtime_error(std::move(loc), "Not enough multisig data was found to sign: import multisig data from more other participants")
+      {
+      }
+    };
     //----------------------------------------------------------------------------------------------------
     const char* const file_error_messages[] = {
       "file already exists",
@@ -243,6 +261,16 @@ namespace tools
     {
       explicit invalid_priority(std::string&& loc)
         : wallet_logic_error(std::move(loc), "invalid priority")
+      {
+      }
+
+      std::string to_string() const { return wallet_logic_error::to_string(); }
+    };
+
+    struct invalid_multisig_seed : public wallet_logic_error
+    {
+      explicit invalid_multisig_seed(std::string&& loc)
+        : wallet_logic_error(std::move(loc), "invalid multisig seed")
       {
       }
 

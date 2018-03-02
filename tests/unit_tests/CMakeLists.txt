@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2017, The Monero Project
+# Copyright (c) 2014-2018, The Monero Project
 #
 # All rights reserved.
 #
@@ -34,8 +34,9 @@ set(unit_tests_sources
   blockchain_db.cpp
   block_queue.cpp
   block_reward.cpp
+  bulletproofs.cpp
   canonical_amounts.cpp
-  chacha8.cpp
+  chacha.cpp
   checkpoints.cpp
   command_line.cpp
   crypto.cpp
@@ -49,8 +50,10 @@ set(unit_tests_sources
   hashchain.cpp
   http.cpp
   main.cpp
+  memwipe.cpp
   mnemonics.cpp
   mul_div.cpp
+  multisig.cpp
   parse_amount.cpp
   serialization.cpp
   sha256.cpp
@@ -99,6 +102,8 @@ if (NOT MSVC)
     PROPERTY
       COMPILE_FLAGS " -Wno-undef -Wno-sign-compare")
 endif ()
+
+SET_PROPERTY(SOURCE memwipe.cpp PROPERTY COMPILE_FLAGS -Ofast)
 
 add_test(
   NAME    unit_tests

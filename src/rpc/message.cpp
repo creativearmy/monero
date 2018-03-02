@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2017, The Monero Project
+// Copyright (c) 2016-2018, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -111,7 +111,7 @@ FullMessage::FullMessage(Message* message)
 FullMessage::FullMessage(const std::string& json_string, bool request)
 {
   doc.Parse(json_string.c_str());
-  if (doc.HasParseError())
+  if (doc.HasParseError() || !doc.IsObject())
   {
     throw cryptonote::json::PARSE_FAIL();
   }

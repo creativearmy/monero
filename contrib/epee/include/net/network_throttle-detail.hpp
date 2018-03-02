@@ -2,7 +2,7 @@
 /// @author rfree (current maintainer in monero.cc project)
 /// @brief implementaion for throttling of connection (count and rate-limit speed etc)
 
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -33,8 +33,8 @@
 /* rfree: throttle details, implementing rate limiting */
 
 
-#ifndef INCLUDED_src_p2p_throttle_detail_hpp
-#define INCLUDED_src_p2p_throttle_detail_hpp
+#ifndef INCLUDED_throttle_detail_hpp
+#define INCLUDED_throttle_detail_hpp
 
 #include "network_throttle.hpp"
 
@@ -52,8 +52,7 @@ class network_throttle : public i_network_throttle {
 		};
 
 
-		network_speed_kbps m_target_speed;
-		network_speed_kbps m_real_target_speed;
+		network_speed_bps m_target_speed;
 		size_t m_network_add_cost; // estimated add cost of headers 
 		size_t m_network_minimal_segment; // estimated minimal cost of sending 1 byte to round up to
 		size_t m_network_max_segment; // recommended max size of 1 TCP transmission
@@ -76,7 +75,6 @@ class network_throttle : public i_network_throttle {
 		virtual ~network_throttle();
 		virtual void set_name(const std::string &name);
 		virtual void set_target_speed( network_speed_kbps target );
-		virtual void set_real_target_speed( network_speed_kbps real_target ); // only for throttle_out
 		virtual network_speed_kbps get_target_speed();
 
 		// add information about events:

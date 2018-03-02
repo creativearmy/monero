@@ -6,7 +6,7 @@
 
 */
 
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -122,7 +122,9 @@ public:
   bool set_limit(int64_t limit_down, int64_t limit_up);
 
   bool out_peers(uint64_t limit);
-  
+
+  bool in_peers(uint64_t limit);
+
   bool start_save_graph();
   
   bool stop_save_graph();

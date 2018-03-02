@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 //
 // All rights reserved.
 //
@@ -32,6 +32,7 @@
 #include <fstream>
 
 #include <boost/filesystem.hpp>
+#include <boost/algorithm/string.hpp>
 #include "misc_log_ex.h"
 #include "bootstrap_file.h"
 #include "bootstrap_serialization.h"
@@ -458,7 +459,7 @@ int import_from_file(cryptonote::core& core, const std::string& import_file_path
 
           // tx number 1: coinbase tx
           // tx number 2 onwards: archived_txs
-          for (transaction tx : archived_txs)
+          for (const transaction &tx : archived_txs)
           {
             // add blocks with verification.
             // for Blockchain and blockchain_storage add_new_block().
@@ -593,8 +594,8 @@ int main(int argc, char* argv[])
   const command_line::arg_descriptor<std::string> arg_database = {
     "database", available_dbs.c_str(), default_db_type
   };
-  const command_line::arg_descriptor<bool> arg_verify =  {"verify",
-    "Verify blocks and transactions during import", true};
+  const command_line::arg_descriptor<bool> arg_verify =  {"guard-against-pwnage",
+    "Verify blocks and transactions during import (only disable if you exported the file yourself)", true};
   const command_line::arg_descriptor<bool> arg_batch  =  {"batch",
     "Batch transactions for faster import", true};
   const command_line::arg_descriptor<bool> arg_resume =  {"resume",
@@ -670,8 +671,7 @@ int main(int argc, char* argv[])
   }
 
   opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-  auto data_dir_arg = opt_testnet ? cryptonote::arg_testnet_data_dir : cryptonote::arg_data_dir;
-  m_config_folder = command_line::get_arg(vm, data_dir_arg);
+  m_config_folder = command_line::get_arg(vm, cryptonote::arg_data_dir);
   db_arg_str = command_line::get_arg(vm, arg_database);
 
   mlog_configure(mlog_get_default_log_path("monero-blockchain-import.log"), true);

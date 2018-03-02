@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 //
 // All rights reserved.
 //
@@ -112,11 +112,12 @@ namespace cryptonote
      *
      * @param db a pointer to the backing store to use for the blockchain
      * @param testnet true if on testnet, else false
+     * @param offline true if running offline, else false
      * @param test_options test parameters
      *
      * @return true on success, false if any initialization steps fail
      */
-    bool init(BlockchainDB* db, const bool testnet = false, const cryptonote::test_options *test_options = NULL);
+    bool init(BlockchainDB* db, const bool testnet = false, bool offline = false, const cryptonote::test_options *test_options = NULL);
 
     /**
      * @brief Initialize the Blockchain state
@@ -124,10 +125,11 @@ namespace cryptonote
      * @param db a pointer to the backing store to use for the blockchain
      * @param hf a structure containing hardfork information
      * @param testnet true if on testnet, else false
+     * @param offline true if running offline, else false
      *
      * @return true on success, false if any initialization steps fail
      */
-    bool init(BlockchainDB* db, HardFork*& hf, const bool testnet = false);
+    bool init(BlockchainDB* db, HardFork*& hf, const bool testnet = false, bool offline = false);
 
     /**
      * @brief Uninitializes the blockchain state
@@ -636,6 +638,13 @@ namespace cryptonote
     uint64_t get_current_cumulative_blocksize_limit() const;
 
     /**
+     * @brief gets the blocksize median based on recent blocks (same window as for the limit)
+     *
+     * @return the median
+     */
+    uint64_t get_current_cumulative_blocksize_median() const;
+
+    /**
      * @brief gets the difficulty of the block with a given height
      *
      * @param i the height
@@ -677,32 +686,6 @@ namespace cryptonote
     bool get_transactions(const t_ids_container& txs_ids, t_tx_container& txs, t_missed_container& missed_txs) const;
 
     //debug functions
-
-    /**
-     * @brief prints data about a snippet of the blockchain
-     *
-     * if start_index is greater than the blockchain height, do nothing
-     *
-     * @param start_index height on chain to start at
-     * @param end_index height on chain to end at
-     */
-    void print_blockchain(uint64_t start_index, uint64_t end_index) const;
-
-    /**
-     * @brief prints every block's hash
-     *
-     * WARNING: This function will absolutely crush a terminal in prints, so
-     * it is recommended to redirect this output to a log file (or null sink
-     * if a log file is already set up, as should be the default)
-     */
-    void print_blockchain_index() const;
-
-    /**
-     * @brief currently does nothing, candidate for removal
-     *
-     * @param file
-     */
-    void print_blockchain_outs(const std::string& file) const;
 
     /**
      * @brief check the blockchain against a set of checkpoints
@@ -939,7 +922,7 @@ namespace cryptonote
     void update_txpool_tx(const crypto::hash &txid, const txpool_tx_meta_t &meta);
     void remove_txpool_tx(const crypto::hash &txid);
     uint64_t get_txpool_tx_count(bool include_unrelayed_txes = true) const;
-    txpool_tx_meta_t get_txpool_tx_meta(const crypto::hash& txid) const;
+    bool get_txpool_tx_meta(const crypto::hash& txid, txpool_tx_meta_t &meta) const;
     bool get_txpool_tx_blob(const crypto::hash& txid, cryptonote::blobdata &bd) const;
     cryptonote::blobdata get_txpool_tx_blob(const crypto::hash& txid) const;
     bool for_all_txpool_txes(std::function<bool(const crypto::hash&, const txpool_tx_meta_t&, const cryptonote::blobdata*)>, bool include_blob = false, bool include_unrelayed_txes = true) const;
@@ -987,6 +970,7 @@ namespace cryptonote
     // main chain
     transactions_container m_transactions;
     size_t m_current_block_cumul_sz_limit;
+    size_t m_current_block_cumul_sz_median;
 
     // metadata containers
     std::unordered_map<crypto::hash, std::unordered_map<crypto::key_image, std::vector<output_data_t>>> m_scan_table;
@@ -1028,6 +1012,7 @@ namespace cryptonote
     HardFork *m_hardfork;
 
     bool m_testnet;
+    bool m_offline;
 
     std::atomic<bool> m_cancel;
 

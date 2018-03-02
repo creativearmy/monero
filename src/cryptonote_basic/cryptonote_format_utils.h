@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -29,7 +29,7 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #pragma once
-#include "cryptonote_protocol/cryptonote_protocol_defs.h"
+#include "blobdatatype.h"
 #include "cryptonote_basic_impl.h"
 #include "account.h"
 #include "subaddress_index.h"
@@ -37,6 +37,11 @@
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include <unordered_map>
+
+namespace epee
+{
+  class wipeable_string;
+}
 
 namespace cryptonote
 {
@@ -88,6 +93,7 @@ namespace cryptonote
   bool get_tx_fee(const transaction& tx, uint64_t & fee);
   uint64_t get_tx_fee(const transaction& tx);
   crypto::secret_key get_subaddress_secret_key(const crypto::secret_key& a, const subaddress_index& index);
+  std::vector<crypto::public_key> get_subaddress_spend_public_keys(const cryptonote::account_keys &keys, uint32_t account, uint32_t begin, uint32_t end);
   bool generate_key_image_helper(const account_keys& ack, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, const crypto::public_key& out_key, const crypto::public_key& tx_public_key, const std::vector<crypto::public_key>& additional_tx_public_keys, size_t real_output_index, keypair& in_ephemeral, crypto::key_image& ki);
   bool generate_key_image_helper_precomp(const account_keys& ack, const crypto::public_key& out_key, const crypto::key_derivation& recv_derivation, size_t real_output_index, const subaddress_index& received_index, keypair& in_ephemeral, crypto::key_image& ki);
   void get_blob_hash(const blobdata& blob, crypto::hash& res);
@@ -226,8 +232,8 @@ namespace cryptonote
   bool is_valid_decomposed_amount(uint64_t amount);
   void get_hash_stats(uint64_t &tx_hashes_calculated, uint64_t &tx_hashes_cached, uint64_t &block_hashes_calculated, uint64_t & block_hashes_cached);
 
-  crypto::secret_key encrypt_key(crypto::secret_key key, const std::string &passphrase);
-  crypto::secret_key decrypt_key(crypto::secret_key key, const std::string &passphrase);
+  crypto::secret_key encrypt_key(crypto::secret_key key, const epee::wipeable_string &passphrase);
+  crypto::secret_key decrypt_key(crypto::secret_key key, const epee::wipeable_string &passphrase);
 #define CHECKED_GET_SPECIFIC_VARIANT(variant_var, specific_type, variable_name, fail_return_val) \
   CHECK_AND_ASSERT_MES(variant_var.type() == typeid(specific_type), fail_return_val, "wrong variant type: " << variant_var.type().name() << ", expected " << typeid(specific_type).name()); \
   specific_type& variable_name = boost::get<specific_type>(variant_var);

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 //
 // All rights reserved.
 //
@@ -32,14 +32,17 @@
 #include <numeric>
 #include <boost/utility/value_init.hpp>
 #include <boost/interprocess/detail/atomic.hpp>
+#include <boost/algorithm/string.hpp>
 #include <boost/limits.hpp>
-#include "misc_language.h"
 #include "include_base_utils.h"
+#include "misc_language.h"
+#include "syncobj.h"
 #include "cryptonote_basic_impl.h"
 #include "cryptonote_format_utils.h"
 #include "file_io_utils.h"
 #include "common/command_line.h"
 #include "string_coding.h"
+#include "string_tools.h"
 #include "storages/portable_storage_template_helper.h"
 #include "boost/logic/tribool.hpp"
 #include <boost/asio.hpp>
@@ -201,7 +204,8 @@ namespace cryptonote
       {
         uint64_t total_hr = std::accumulate(m_last_hash_rates.begin(), m_last_hash_rates.end(), 0);
         float hr = static_cast<float>(total_hr)/static_cast<float>(m_last_hash_rates.size());
-        std::cout << "hashrate: " << std::setprecision(4) << std::fixed << hr << ENDL;
+        const auto precision = std::cout.precision();
+        std::cout << "hashrate: " << std::setprecision(4) << std::fixed << hr << precision << ENDL;
       }
     }
     m_last_hr_merge_time = misc_utils::get_tick_count();
@@ -725,20 +729,14 @@ namespace cryptonote
         continue; // if interrupted because stop called, loop should end ..
       }
 
-      boost::tribool battery_powered(on_battery_power());
-      bool on_ac_power = false;
-      if(indeterminate( battery_powered ))
+      bool on_ac_power = m_ignore_battery;
+      if(!m_ignore_battery)
       {
-        // name could be better, only ignores battery requirement if we failed
-        // to get the status of the system
-        if( m_ignore_battery )
+        boost::tribool battery_powered(on_battery_power());
+        if(!indeterminate( battery_powered ))
         {
-          on_ac_power = true;
+          on_ac_power = !battery_powered;
         }
-      }
-      else
-      {
-        on_ac_power = !battery_powered;
       }
 
       if( m_is_background_mining_started )

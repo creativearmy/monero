@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -353,14 +353,17 @@ static std::string get_fork_extra_info(uint64_t t, uint64_t now, uint64_t block_
   return "";
 }
 
-static float get_sync_percentage(const cryptonote::COMMAND_RPC_GET_INFO::response &ires)
+static float get_sync_percentage(uint64_t height, uint64_t target_height)
 {
-  uint64_t height = ires.height;
-  uint64_t target_height = ires.target_height ? ires.target_height < ires.height ? ires.height : ires.target_height : ires.height;
+  target_height = target_height ? target_height < height ? height : target_height : height;
   float pc = 100.0f * height / target_height;
   if (height < target_height && pc > 99.9f)
     return 99.9f; // to avoid 100% when not fully synced
   return pc;
+}
+static float get_sync_percentage(const cryptonote::COMMAND_RPC_GET_INFO::response &ires)
+{
+  return get_sync_percentage(ires.height, ires.target_height);
 }
 
 bool t_rpc_command_executor::show_status() {
@@ -421,12 +424,26 @@ bool t_rpc_command_executor::show_status() {
 
   std::time_t uptime = std::time(nullptr) - ires.start_time;
   uint64_t net_height = ires.target_height > ires.height ? ires.target_height : ires.height;
+  std::string bootstrap_msg;
+  if (ires.was_bootstrap_ever_used)
+  {
+    bootstrap_msg = ", bootstrapping from " + ires.bootstrap_daemon_address;
+    if (ires.untrusted)
+    {
+      bootstrap_msg += (boost::format(", local height: %llu (%.1f%%)") % ires.height_without_bootstrap % get_sync_percentage(ires.height_without_bootstrap, net_height)).str();
+    }
+    else
+    {
+      bootstrap_msg += " was used before";
+    }
+  }
 
-  tools::success_msg_writer() << boost::format("Height: %llu/%llu (%.1f%%) on %s, %s, net hash %s, v%u%s, %s, %u(out)+%u(in) connections, uptime %ud %uh %um %us")
+  tools::success_msg_writer() << boost::format("Height: %llu/%llu (%.1f%%) on %s%s, %s, net hash %s, v%u%s, %s, %u(out)+%u(in) connections, uptime %ud %uh %um %us")
     % (unsigned long long)ires.height
     % (unsigned long long)net_height
     % get_sync_percentage(ires)
     % (ires.testnet ? "testnet" : "mainnet")
+    % bootstrap_msg
     % (!has_mining_info ? "mining info unavailable" : mining_busy ? "syncing" : mres.active ? ( ( mres.is_background_mining_enabled ? "smart " : "" ) + std::string("mining at ") + get_mining_speed(mres.speed) ) : "not mining")
     % get_mining_speed(ires.difficulty / ires.target)
     % (unsigned)hfres.version
@@ -538,7 +555,7 @@ bool t_rpc_command_executor::print_blockchain_info(uint64_t start_block_index, u
       std::cout << std::endl;
     std::cout
       << "height: " << header.height << ", timestamp: " << header.timestamp << ", difficulty: " << header.difficulty
-      << ", size: " << header.block_size << std::endl
+      << ", size: " << header.block_size << ", transactions: " << header.num_txes << std::endl
       << "major version: " << (unsigned)header.major_version << ", minor version: " << (unsigned)header.minor_version << std::endl
       << "block id: " << header.hash << ", previous block id: " << header.prev_hash << std::endl
       << "difficulty: " << header.difficulty << ", nonce " << header.nonce << ", reward " << cryptonote::print_money(header.reward) << std::endl;
@@ -1262,7 +1279,7 @@ bool t_rpc_command_executor::out_peers(uint64_t limit)
 
 	if (m_is_rpc)
 	{
-		if (!m_rpc_client->json_rpc_request(req, res, "out_peers", fail_message.c_str()))
+		if (!m_rpc_client->rpc_request(req, res, "/out_peers", fail_message.c_str()))
 		{
 			return true;
 		}
@@ -1277,6 +1294,38 @@ bool t_rpc_command_executor::out_peers(uint64_t limit)
 	}
 
 	std::cout << "Max number of out peers set to " << limit << std::endl;
+
+	return true;
+}
+
+bool t_rpc_command_executor::in_peers(uint64_t limit)
+{
+	cryptonote::COMMAND_RPC_IN_PEERS::request req;
+	cryptonote::COMMAND_RPC_IN_PEERS::response res;
+
+	epee::json_rpc::error error_resp;
+
+	req.in_peers = limit;
+
+	std::string fail_message = "Unsuccessful";
+
+	if (m_is_rpc)
+	{
+		if (!m_rpc_client->rpc_request(req, res, "/in_peers", fail_message.c_str()))
+		{
+			return true;
+		}
+	}
+	else
+	{
+		if (!m_rpc_server->on_in_peers(req, res) || res.status != CORE_RPC_STATUS_OK)
+		{
+			tools::fail_msg_writer() << make_error(fail_message, res.status);
+			return true;
+		}
+	}
+
+	std::cout << "Max number of in peers set to " << limit << std::endl;
 
 	return true;
 }
@@ -1611,7 +1660,7 @@ bool t_rpc_command_executor::alt_chain_info()
   }
 
   tools::msg_writer() << boost::lexical_cast<std::string>(res.chains.size()) << " alternate chains found:";
-  for (const auto chain: res.chains)
+  for (const auto &chain: res.chains)
   {
     uint64_t start_height = (chain.height - chain.length + 1);
     tools::msg_writer() << chain.length << " blocks long, from height " << start_height << " (" << (ires.height - start_height - 1)

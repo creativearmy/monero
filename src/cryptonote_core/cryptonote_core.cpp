@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 //
 // All rights reserved.
 //
@@ -28,7 +28,10 @@
 //
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
+#include <boost/algorithm/string.hpp>
+
 #include "include_base_utils.h"
+#include "string_tools.h"
 using namespace epee;
 
 #include <unordered_set>
@@ -44,12 +47,13 @@ using namespace epee;
 #include "cryptonote_config.h"
 #include "cryptonote_tx_utils.h"
 #include "misc_language.h"
+#include "file_io_utils.h"
 #include <csignal>
-#include <p2p/net_node.h>
 #include "checkpoints/checkpoints.h"
 #include "ringct/rctTypes.h"
 #include "blockchain_db/blockchain_db.h"
 #include "ringct/rctSigs.h"
+#include "version.h"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "cn"
@@ -62,18 +66,29 @@ DISABLE_VS_WARNINGS(4355)
 
 namespace cryptonote
 {
-  const command_line::arg_descriptor<std::string> arg_data_dir = {
-    "data-dir"
-  , "Specify data directory"
-  };
-  const command_line::arg_descriptor<std::string> arg_testnet_data_dir = {
-    "testnet-data-dir"
-  , "Specify testnet data directory"
-  };
   const command_line::arg_descriptor<bool, false> arg_testnet_on  = {
     "testnet"
   , "Run on testnet. The wallet must be launched with --testnet flag."
   , false
+  };
+  const command_line::arg_descriptor<std::string, false, true> arg_data_dir = {
+    "data-dir"
+  , "Specify data directory"
+  , tools::get_default_data_dir()
+  , arg_testnet_on
+  , [](bool testnet, bool defaulted, std::string val) {
+      if (testnet)
+        return (boost::filesystem::path(val) / "testnet").string();
+      return val;
+    }
+  };
+  const command_line::arg_descriptor<bool> arg_offline = {
+    "offline"
+  , "Do not listen for peers, nor connect to any"
+  };
+  const command_line::arg_descriptor<bool> arg_disable_dns_checkpoints = {
+    "disable-dns-checkpoints"
+  , "Do not retrieve checkpoints from DNS"
   };
 
   static const command_line::arg_descriptor<bool> arg_test_drop_download = {
@@ -122,8 +137,18 @@ namespace cryptonote
   };
   static const command_line::arg_descriptor<bool> arg_fluffy_blocks  = {
     "fluffy-blocks"
-  , "Relay blocks as fluffy blocks where possible (automatic on testnet)"
+  , "Relay blocks as fluffy blocks (obsolete, now default)"
+  , true
+  };
+  static const command_line::arg_descriptor<bool> arg_no_fluffy_blocks  = {
+    "no-fluffy-blocks"
+  , "Relay blocks as normal blocks"
   , false
+  };
+  static const command_line::arg_descriptor<size_t> arg_max_txpool_size  = {
+    "max-txpool-size"
+  , "Set maximum txpool size in bytes."
+  , DEFAULT_TXPOOL_MAX_SIZE
   };
 
   //-----------------------------------------------------------------------------------------------
@@ -212,8 +237,7 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------
   void core::init_options(boost::program_options::options_description& desc)
   {
-    command_line::add_arg(desc, arg_data_dir, tools::get_default_data_dir());
-    command_line::add_arg(desc, arg_testnet_data_dir, (boost::filesystem::path(tools::get_default_data_dir()) / "testnet").string());
+    command_line::add_arg(desc, arg_data_dir);
 
     command_line::add_arg(desc, arg_test_drop_download);
     command_line::add_arg(desc, arg_test_drop_download_height);
@@ -226,11 +250,11 @@ namespace cryptonote
     command_line::add_arg(desc, arg_block_sync_size);
     command_line::add_arg(desc, arg_check_updates);
     command_line::add_arg(desc, arg_fluffy_blocks);
+    command_line::add_arg(desc, arg_no_fluffy_blocks);
     command_line::add_arg(desc, arg_test_dbg_lock_sleep);
-
-    // we now also need some of net_node's options (p2p bind arg, for separate data dir)
-    command_line::add_arg(desc, nodetool::arg_testnet_p2p_bind_port, false);
-    command_line::add_arg(desc, nodetool::arg_p2p_bind_port, false);
+    command_line::add_arg(desc, arg_offline);
+    command_line::add_arg(desc, arg_disable_dns_checkpoints);
+    command_line::add_arg(desc, arg_max_txpool_size);
 
     miner::init_options(desc);
     BlockchainDB::init_options(desc);
@@ -240,8 +264,7 @@ namespace cryptonote
   {
     m_testnet = command_line::get_arg(vm, arg_testnet_on);
 
-    auto data_dir_arg = m_testnet ? arg_testnet_data_dir : arg_data_dir;
-    m_config_folder = command_line::get_arg(vm, data_dir_arg);
+    m_config_folder = command_line::get_arg(vm, arg_data_dir);
 
     auto data_dir = boost::filesystem::path(m_config_folder);
 
@@ -263,7 +286,11 @@ namespace cryptonote
 
     set_enforce_dns_checkpoints(command_line::get_arg(vm, arg_dns_checkpoints));
     test_drop_download_height(command_line::get_arg(vm, arg_test_drop_download_height));
-    m_fluffy_blocks_enabled = m_testnet || get_arg(vm, arg_fluffy_blocks);
+    m_fluffy_blocks_enabled = !get_arg(vm, arg_no_fluffy_blocks);
+    m_offline = get_arg(vm, arg_offline);
+    m_disable_dns_checkpoints = get_arg(vm, arg_disable_dns_checkpoints);
+    if (!command_line::is_arg_defaulted(vm, arg_fluffy_blocks))
+      MWARNING(arg_fluffy_blocks.name << " is obsolete, it is now default");
 
     if (command_line::get_arg(vm, arg_test_drop_download) == true)
       test_drop_download();
@@ -329,21 +356,17 @@ namespace cryptonote
     return m_blockchain_storage.get_alternative_blocks_count();
   }
   //-----------------------------------------------------------------------------------------------
-  bool core::init(const boost::program_options::variables_map& vm, const cryptonote::test_options *test_options)
+  bool core::init(const boost::program_options::variables_map& vm, const char *config_subdir, const cryptonote::test_options *test_options)
   {
     start_time = std::time(nullptr);
 
     m_fakechain = test_options != NULL;
     bool r = handle_command_line(vm);
     bool testnet = command_line::get_arg(vm, arg_testnet_on);
-    auto p2p_bind_arg = testnet ? nodetool::arg_testnet_p2p_bind_port : nodetool::arg_p2p_bind_port;
-    std::string m_port = command_line::get_arg(vm, p2p_bind_arg);
     std::string m_config_folder_mempool = m_config_folder;
 
-    if ((!testnet && m_port != std::to_string(::config::P2P_DEFAULT_PORT))
-        || (testnet && m_port != std::to_string(::config::testnet::P2P_DEFAULT_PORT))) {
-      m_config_folder_mempool = m_config_folder_mempool + "/" + m_port;
-    }
+    if (config_subdir)
+      m_config_folder_mempool = m_config_folder_mempool + "/" + config_subdir;
 
     std::string db_type = command_line::get_arg(vm, cryptonote::arg_db_type);
     std::string db_sync_mode = command_line::get_arg(vm, cryptonote::arg_db_sync_mode);
@@ -351,6 +374,7 @@ namespace cryptonote
     bool fast_sync = command_line::get_arg(vm, arg_fast_block_sync) != 0;
     uint64_t blocks_threads = command_line::get_arg(vm, arg_prep_blocks_threads);
     std::string check_updates_string = command_line::get_arg(vm, arg_check_updates);
+    size_t max_txpool_size = command_line::get_arg(vm, arg_max_txpool_size);
 
     boost::filesystem::path folder(m_config_folder);
     if (m_fakechain)
@@ -376,7 +400,7 @@ namespace cryptonote
     // folder might not be a directory, etc, etc
     catch (...) { }
 
-    BlockchainDB* db = new_db(db_type);
+    std::unique_ptr<BlockchainDB> db(new_db(db_type));
     if (db == NULL)
     {
       LOG_ERROR("Attempted to use non-existent database type");
@@ -467,9 +491,9 @@ namespace cryptonote
     m_blockchain_storage.set_user_options(blocks_threads,
         blocks_per_sync, sync_mode, fast_sync);
 
-    r = m_blockchain_storage.init(db, m_testnet, test_options);
+    r = m_blockchain_storage.init(db.release(), m_testnet, m_offline, test_options);
 
-    r = m_mempool.init();
+    r = m_mempool.init(max_txpool_size);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize memory pool");
 
     // now that we have a valid m_blockchain_storage, we can clean out any
@@ -625,6 +649,22 @@ namespace cryptonote
       }
       for (size_t n = 0; n < tx.rct_signatures.outPk.size(); ++n)
         rv.outPk[n].dest = rct::pk2rct(boost::get<txout_to_key>(tx.vout[n].target).key);
+
+      const bool bulletproof = rv.type == rct::RCTTypeFullBulletproof || rv.type == rct::RCTTypeSimpleBulletproof;
+      if (bulletproof)
+      {
+        if (rv.p.bulletproofs.size() != tx.vout.size())
+        {
+          LOG_PRINT_L1("WRONG TRANSACTION BLOB, Bad bulletproofs size in tx " << tx_hash << ", rejected");
+          tvc.m_verifivation_failed = true;
+          return false;
+        }
+        for (size_t n = 0; n < rv.outPk.size(); ++n)
+        {
+          rv.p.bulletproofs[n].V.resize(1);
+          rv.p.bulletproofs[n].V[0] = rv.outPk[n].mask;
+        }
+      }
     }
 
     if (keeped_by_block && get_blockchain_storage().is_within_compiled_block_hash_area())
@@ -828,6 +868,7 @@ namespace cryptonote
           MERROR_VER("Unexpected Null rctSig type");
           return false;
         case rct::RCTTypeSimple:
+        case rct::RCTTypeSimpleBulletproof:
           if (!rct::verRctSimple(rv, true))
           {
             MERROR_VER("rct signature semantics check failed");
@@ -835,6 +876,7 @@ namespace cryptonote
           }
           break;
         case rct::RCTTypeFull:
+        case rct::RCTTypeFullBulletproof:
           if (!rct::verRct(rv, true))
           {
             MERROR_VER("rct signature semantics check failed");
@@ -1031,21 +1073,6 @@ namespace cryptonote
   bool core::find_blockchain_supplement(const uint64_t req_start_block, const std::list<crypto::hash>& qblock_ids, std::list<std::pair<cryptonote::blobdata, std::list<cryptonote::blobdata> > >& blocks, uint64_t& total_height, uint64_t& start_height, size_t max_count) const
   {
     return m_blockchain_storage.find_blockchain_supplement(req_start_block, qblock_ids, blocks, total_height, start_height, max_count);
-  }
-  //-----------------------------------------------------------------------------------------------
-  void core::print_blockchain(uint64_t start_index, uint64_t end_index) const
-  {
-    m_blockchain_storage.print_blockchain(start_index, end_index);
-  }
-  //-----------------------------------------------------------------------------------------------
-  void core::print_blockchain_index() const
-  {
-    m_blockchain_storage.print_blockchain_index();
-  }
-  //-----------------------------------------------------------------------------------------------
-  void core::print_blockchain_outs(const std::string& file)
-  {
-    m_blockchain_storage.print_blockchain_outs(file);
   }
   //-----------------------------------------------------------------------------------------------
   bool core::get_random_outs_for_amounts(const COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::request& req, COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::response& res) const
@@ -1322,13 +1349,19 @@ namespace cryptonote
   {
     if(!m_starter_message_showed)
     {
+      std::string main_message;
+      if (m_offline)
+        main_message = "The daemon is running offline and will not attempt to sync to the Monero network.";
+      else
+        main_message = "The daemon will start synchronizing with the network. This may take a long time to complete.";
       MGINFO_YELLOW(ENDL << "**********************************************************************" << ENDL
-        << "The daemon will start synchronizing with the network. This may take a long time to complete." << ENDL
+        << main_message << ENDL
         << ENDL
-        << "You can set the level of process detailization* through \"set_log <level|categories>\" command*," << ENDL
-        << "where <level> is between 0 (no details) and 4 (very verbose), or custom category based levels (eg, *:WARNING)" << ENDL
+        << "You can set the level of process detailization through \"set_log <level|categories>\" command," << ENDL
+        << "where <level> is between 0 (no details) and 4 (very verbose), or custom category based levels (eg, *:WARNING)." << ENDL
         << ENDL
         << "Use the \"help\" command to see the list of available commands." << ENDL
+        << "Use \"help <command>\" to see a command's documentation." << ENDL
         << "**********************************************************************" << ENDL);
       m_starter_message_showed = true;
     }
@@ -1355,7 +1388,7 @@ namespace cryptonote
         break;
       case HardFork::UpdateNeeded:
         MCLOG_RED(level, "global", "**********************************************************************");
-        MCLOG_RED(level, "global", "Last scheduled hard fork time shows a daemon update is needed now.");
+        MCLOG_RED(level, "global", "Last scheduled hard fork time shows a daemon update is needed soon.");
         MCLOG_RED(level, "global", "**********************************************************************");
         break;
       default:
@@ -1384,6 +1417,9 @@ namespace cryptonote
     static const char buildtag[] = "source";
     static const char subdir[] = "source"; // because it can never be simple
 #endif
+
+    if (m_offline)
+      return true;
 
     if (check_updates_level == UPDATES_DISABLED)
       return true;
@@ -1424,27 +1460,56 @@ namespace cryptonote
     if (!tools::sha256sum(path.string(), file_hash) || (hash != epee::string_tools::pod_to_hex(file_hash)))
     {
       MCDEBUG("updates", "We don't have that file already, downloading");
+      const std::string tmppath = path.string() + ".tmp";
+      if (epee::file_io_utils::is_file_exist(tmppath))
+      {
+        MCDEBUG("updates", "We have part of the file already, resuming download");
+      }
       m_last_update_length = 0;
-      m_update_download = tools::download_async(path.string(), url, [this, hash](const std::string &path, const std::string &uri, bool success) {
+      m_update_download = tools::download_async(tmppath, url, [this, hash, path](const std::string &tmppath, const std::string &uri, bool success) {
+        bool remove = false, good = true;
         if (success)
         {
           crypto::hash file_hash;
-          if (!tools::sha256sum(path, file_hash))
+          if (!tools::sha256sum(tmppath, file_hash))
           {
-            MCERROR("updates", "Failed to hash " << path);
+            MCERROR("updates", "Failed to hash " << tmppath);
+            remove = true;
+            good = false;
           }
-          if (hash != epee::string_tools::pod_to_hex(file_hash))
+          else if (hash != epee::string_tools::pod_to_hex(file_hash))
           {
             MCERROR("updates", "Download from " << uri << " does not match the expected hash");
+            remove = true;
+            good = false;
           }
-          MCLOG_CYAN(el::Level::Info, "updates", "New version downloaded to " << path);
         }
         else
         {
           MCERROR("updates", "Failed to download " << uri);
+          good = false;
         }
         boost::unique_lock<boost::mutex> lock(m_update_mutex);
         m_update_download = 0;
+        if (success && !remove)
+        {
+          std::error_code e = tools::replace_file(tmppath, path.string());
+          if (e)
+          {
+            MCERROR("updates", "Failed to rename downloaded file");
+            good = false;
+          }
+        }
+        else if (remove)
+        {
+          if (!boost::filesystem::remove(tmppath))
+          {
+            MCERROR("updates", "Failed to remove invalid downloaded file");
+            good = false;
+          }
+        }
+        if (good)
+          MCLOG_CYAN(el::Level::Info, "updates", "New version downloaded to " << path.string());
       }, [this](const std::string &path, const std::string &uri, size_t length, ssize_t content_length) {
         if (length >= m_last_update_length + 1024 * 1024 * 10)
         {

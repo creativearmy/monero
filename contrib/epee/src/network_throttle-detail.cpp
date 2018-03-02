@@ -2,7 +2,7 @@
 /// @author rfree (current maintainer in monero.cc project)
 /// @brief implementaion for throttling of connection (count and rate-limit speed etc)
 
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -74,7 +74,7 @@
 #include "net/abstract_tcp_server2.h"
 
 // TODO:
-#include "network_throttle-detail.hpp"
+#include "net/network_throttle-detail.hpp"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "net.throttle"
@@ -160,17 +160,11 @@ void network_throttle::set_target_speed( network_speed_kbps target )
 {
     m_target_speed = target * 1024;
 	MINFO("Setting LIMIT: " << target << " kbps");
-	set_real_target_speed(target);
-}
-
-void network_throttle::set_real_target_speed( network_speed_kbps real_target )
-{
-	m_real_target_speed = real_target * 1024;
 }
 
 network_speed_kbps network_throttle::get_target_speed()
 {
-	return m_real_target_speed / 1024;
+	return m_target_speed / 1024;
 }
 			
 void network_throttle::tick()
@@ -237,8 +231,10 @@ network_time_seconds network_throttle::get_sleep_time_after_tick(size_t packet_s
 }
 
 void network_throttle::logger_handle_net(const std::string &filename, double time, size_t size) {
-    boost::mutex mutex;
-    mutex.lock(); {
+    static boost::mutex mutex;
+
+    boost::lock_guard<boost::mutex> lock(mutex);
+    {
         std::fstream file;
         file.open(filename.c_str(), std::ios::app | std::ios::out );
         file.precision(6);
@@ -246,7 +242,7 @@ void network_throttle::logger_handle_net(const std::string &filename, double tim
             _warn("Can't open file " << filename);
         file << static_cast<int>(time) << " " << static_cast<double>(size/1024) << "\n";
         file.close();
-    }  mutex.unlock();
+    }
 }
 
 // fine tune this to decide about sending speed:

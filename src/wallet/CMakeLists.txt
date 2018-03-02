@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2017, The Monero Project
+# Copyright (c) 2014-2018, The Monero Project
 #
 # All rights reserved.
 #
@@ -51,6 +51,7 @@ monero_add_library(wallet
   ${wallet_private_headers})
 target_link_libraries(wallet
   PUBLIC
+    multisig
     common
     cryptonote_core
     mnemonics
@@ -82,7 +83,7 @@ target_link_libraries(wallet_rpc_server
   PRIVATE
     wallet
     epee
-    rpc
+    rpc_base
     cryptonote_core
     cncrypto
     common
@@ -104,6 +105,7 @@ if (BUILD_GUI_DEPS)
     set(libs_to_merge
             wallet_api
             wallet
+            multisig
             cryptonote_core
             cryptonote_basic
             mnemonics
@@ -124,6 +126,6 @@ if (BUILD_GUI_DEPS)
     endif()
     install(TARGETS wallet_merged
         ARCHIVE DESTINATION ${lib_folder})
-
-    add_subdirectory(api)
 endif()
+
+add_subdirectory(api)

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 //
 // All rights reserved.
 //
@@ -74,7 +74,7 @@ bool AddressBookImpl::addRow(const std::string &dst_addr , const std::string &pa
 
   // integrated + long payment id provided
   if(has_long_pid && info.has_payment_id) {
-    m_errorString = tr("Integrated address and long payment id can't be used at the same time");
+    m_errorString = tr("Integrated address and long payment ID can't be used at the same time");
     m_errorCode = Invalid_Payment_Id;
     return false;
   }

@@ -1,4 +1,4 @@
-// Copyright (c) 2017, The Monero Project
+// Copyright (c) 2017-2018, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -28,7 +28,7 @@
 
 #include "include_base_utils.h"
 #include "file_io_utils.h"
-#include "cryptonote_protocol/blobdatatype.h"
+#include "cryptonote_basic/blobdatatype.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "wallet/wallet2.h"
@@ -54,16 +54,8 @@ int ColdTransactionFuzzer::init()
 
   try
   {
-    boost::filesystem::remove("/tmp/cold-transaction-test.keys");
-    boost::filesystem::remove("/tmp/cold-transaction-test.address.txt");
-    boost::filesystem::remove("/tmp/cold-transaction-test");
-
     wallet.init("");
-    wallet.generate("/tmp/cold-transaction-test", "", spendkey, true, false);
-
-    boost::filesystem::remove("/tmp/cold-transaction-test.keys");
-    boost::filesystem::remove("/tmp/cold-transaction-test.address.txt");
-    boost::filesystem::remove("/tmp/cold-transaction-test");
+    wallet.generate("", "", spendkey, true, false);
   }
   catch (const std::exception &e)
   {

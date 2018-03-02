@@ -1,4 +1,4 @@
-// Copyright (c) 2017, The Monero Project
+// Copyright (c) 2017-2018, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -32,7 +32,7 @@
 // but including here for clarity
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
-#include "cryptonote_protocol/blobdatatype.h"
+#include "cryptonote_basic/blobdatatype.h"
 #include "ringct/rctSigs.h"
 
 namespace cryptonote
@@ -799,6 +799,10 @@ namespace rpc
     }
 
     header.hash = hash_in;
+    if (b.miner_tx.vin.size() != 1 || b.miner_tx.vin.front().type() != typeid(txin_gen))
+    {
+      return false;
+    }
     header.height = boost::get<txin_gen>(b.miner_tx.vin.front()).height;
 
     header.major_version = b.major_version;

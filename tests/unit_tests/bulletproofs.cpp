@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2017-2018, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -25,12 +25,47 @@
 // INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
+//
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-#pragma once
+#include "gtest/gtest.h"
 
-namespace cryptonote
+#include "ringct/rctOps.h"
+#include "ringct/bulletproofs.h"
+
+TEST(bulletproofs, valid_zero)
 {
-  typedef std::string blobdata;
+  rct::Bulletproof proof = bulletproof_PROVE(0, rct::skGen());
+  ASSERT_TRUE(rct::bulletproof_VERIFY(proof));
+}
+
+TEST(bulletproofs, valid_max)
+{
+  rct::Bulletproof proof = bulletproof_PROVE(0xffffffffffffffff, rct::skGen());
+  ASSERT_TRUE(rct::bulletproof_VERIFY(proof));
+}
+
+TEST(bulletproofs, valid_random)
+{
+  for (int n = 0; n < 8; ++n)
+  {
+    rct::Bulletproof proof = bulletproof_PROVE(crypto::rand<uint64_t>(), rct::skGen());
+    ASSERT_TRUE(rct::bulletproof_VERIFY(proof));
+  }
+}
+
+TEST(bulletproofs, invalid_8)
+{
+  rct::key invalid_amount = rct::zero();
+  invalid_amount[8] = 1;
+  rct::Bulletproof proof = bulletproof_PROVE(invalid_amount, rct::skGen());
+  ASSERT_FALSE(rct::bulletproof_VERIFY(proof));
+}
+
+TEST(bulletproofs, invalid_31)
+{
+  rct::key invalid_amount = rct::zero();
+  invalid_amount[31] = 1;
+  rct::Bulletproof proof = bulletproof_PROVE(invalid_amount, rct::skGen());
+  ASSERT_FALSE(rct::bulletproof_VERIFY(proof));
 }

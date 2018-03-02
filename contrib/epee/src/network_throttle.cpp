@@ -26,7 +26,7 @@ Throttling work by:
 
 */
 
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -54,7 +54,7 @@ Throttling work by:
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "network_throttle-detail.hpp"
+#include "net/network_throttle-detail.hpp"
 
 namespace epee
 {
@@ -70,9 +70,6 @@ namespace net_utils
 boost::mutex network_throttle_manager::m_lock_get_global_throttle_in;
 boost::mutex network_throttle_manager::m_lock_get_global_throttle_inreq;
 boost::mutex network_throttle_manager::m_lock_get_global_throttle_out;
-
-int network_throttle_manager::xxx;
-
 
 // ================================================================================================
 // methods:

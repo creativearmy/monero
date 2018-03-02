@@ -2,7 +2,7 @@
 /// @author rfree (current maintainer in monero.cc project)
 /// @brief base for connection, contains e.g. the ratelimit hooks
 
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -32,7 +32,7 @@
 
 /* rfree: implementation for the non-template base, can be used by connection<> template class in abstract_tcp_server2 file  */
 
-#include "connection_basic.hpp"
+#include "net/connection_basic.hpp"
 
 #include <boost/asio.hpp>
 #include <string>
@@ -77,8 +77,7 @@
 #include "net/abstract_tcp_server2.h"
 
 // TODO:
-#include "network_throttle-detail.hpp"
-#include "cryptonote_core/cryptonote_core.h"
+#include "net/network_throttle-detail.hpp"
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "net.p2p"
@@ -173,14 +172,9 @@ connection_basic::~connection_basic() noexcept(false) {
 }
 
 void connection_basic::set_rate_up_limit(uint64_t limit) {
-	
-	// TODO remove __SCALING_FACTOR...
-	const double SCALING_FACTOR = 2.1; // to acheve the best performance
-	limit *= SCALING_FACTOR;
 	{
 		CRITICAL_REGION_LOCAL(	network_throttle_manager::m_lock_get_global_throttle_out );
 		network_throttle_manager::get_global_throttle_out().set_target_speed(limit);
-		network_throttle_manager::get_global_throttle_out().set_real_target_speed(limit / SCALING_FACTOR);
 	}
 	save_limit_to_file(limit);
 }
@@ -238,7 +232,7 @@ void connection_basic::sleep_before_packet(size_t packet_size, int phase,  int q
 
 		{ 
 			CRITICAL_REGION_LOCAL(	network_throttle_manager::m_lock_get_global_throttle_out );
-			delay = network_throttle_manager::get_global_throttle_out().get_sleep_time_after_tick( packet_size ); // decission from global
+			delay = network_throttle_manager::get_global_throttle_out().get_sleep_time_after_tick( packet_size );
 		}
 
 		delay *= 0.50;
@@ -252,7 +246,7 @@ void connection_basic::sleep_before_packet(size_t packet_size, int phase,  int q
 // XXX LATER XXX
 	{
 	  CRITICAL_REGION_LOCAL(	network_throttle_manager::m_lock_get_global_throttle_out );
-		network_throttle_manager::get_global_throttle_out().handle_trafic_exact( packet_size * 700); // increase counter - global
+		network_throttle_manager::get_global_throttle_out().handle_trafic_exact( packet_size ); // increase counter - global
 	}
 
 }
@@ -262,13 +256,13 @@ void connection_basic::set_start_time() {
 }
 
 void connection_basic::do_send_handler_write(const void* ptr , size_t cb ) {
-	sleep_before_packet(cb,1,-1);
+        // No sleeping here; sleeping is done once and for all in connection<t_protocol_handler>::handle_write
 	MTRACE("handler_write (direct) - before ASIO write, for packet="<<cb<<" B (after sleep)");
 	set_start_time();
 }
 
 void connection_basic::do_send_handler_write_from_queue( const boost::system::error_code& e, size_t cb, int q_len ) {
-	sleep_before_packet(cb,2,q_len);
+        // No sleeping here; sleeping is done once and for all in connection<t_protocol_handler>::handle_write
 	MTRACE("handler_write (after write, from queue="<<q_len<<") - before ASIO write, for packet="<<cb<<" B (after sleep)");
 
 	set_start_time();

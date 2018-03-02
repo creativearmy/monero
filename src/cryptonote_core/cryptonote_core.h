@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 //
 // All rights reserved.
 //
@@ -36,7 +36,6 @@
 #include <boost/program_options/variables_map.hpp>
 #include <boost/interprocess/sync/file_lock.hpp>
 
-#include "p2p/net_node_common.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler_common.h"
 #include "storages/portable_storage_template_helper.h"
 #include "common/download.h"
@@ -59,9 +58,9 @@ namespace cryptonote
      const std::pair<uint8_t, uint64_t> *hard_forks;
    };
 
-  extern const command_line::arg_descriptor<std::string> arg_data_dir;
-  extern const command_line::arg_descriptor<std::string> arg_testnet_data_dir;
+  extern const command_line::arg_descriptor<std::string, false, true> arg_data_dir;
   extern const command_line::arg_descriptor<bool, false> arg_testnet_on;
+  extern const command_line::arg_descriptor<bool> arg_offline;
 
   /************************************************************************/
   /*                                                                      */
@@ -241,11 +240,12 @@ namespace cryptonote
       * a miner instance with parameters given on the command line (or defaults)
       *
       * @param vm command line parameters
+      * @param config_subdir subdirectory for config storage
       * @param test_options configuration options for testing
       *
       * @return false if one of the init steps fails, otherwise true
       */
-     bool init(const boost::program_options::variables_map& vm, const test_options *test_options = NULL);
+     bool init(const boost::program_options::variables_map& vm, const char *config_subdir = NULL, const test_options *test_options = NULL);
 
      /**
       * @copydoc Blockchain::reset_and_set_genesis_block
@@ -600,32 +600,11 @@ namespace cryptonote
      const Blockchain& get_blockchain_storage()const{return m_blockchain_storage;}
 
      /**
-      * @copydoc Blockchain::print_blockchain
-      *
-      * @note see Blockchain::print_blockchain
-      */
-     void print_blockchain(uint64_t start_index, uint64_t end_index) const;
-
-     /**
-      * @copydoc Blockchain::print_blockchain_index
-      *
-      * @note see Blockchain::print_blockchain_index
-      */
-     void print_blockchain_index() const;
-
-     /**
       * @copydoc tx_memory_pool::print_pool
       *
       * @note see tx_memory_pool::print_pool
       */
      std::string print_pool(bool short_format) const;
-
-     /**
-      * @copydoc Blockchain::print_blockchain_outs
-      *
-      * @note see Blockchain::print_blockchain_outs
-      */
-     void print_blockchain_outs(const std::string& file);
 
      /**
       * @copydoc miner::on_synchronized
@@ -772,6 +751,13 @@ namespace cryptonote
       * @return free space in bytes
       */
      uint64_t get_free_space() const;
+
+     /**
+      * @brief get whether the core is running offline
+      *
+      * @return whether the core is running offline
+      */
+     bool offline() const { return m_offline; }
 
    private:
 
@@ -1000,6 +986,7 @@ namespace cryptonote
      boost::mutex m_update_mutex;
 
      bool m_fluffy_blocks_enabled;
+     bool m_offline;
    };
 }
 

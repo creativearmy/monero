@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2017, The Monero Project
+# Copyright (c) 2014-2018, The Monero Project
 #
 # All rights reserved.
 #
@@ -50,9 +50,11 @@ else()
 add_definitions(-D_GNU_SOURCE)
 endif()
 add_definitions(-std=c99)
+add_definitions(-fPIC)
 
 option(USE_ECDSA "Use ECDSA algorithms" ON)
 option(USE_SHA2 "Enable SHA2 support" ON)
+option(USE_SHA1 "Enable SHA1 support" ON)
 set(ENABLE_DNSTAP 0)
 set(HAVE_SSL 1)
 if (CMAKE_USE_PTHREADS_INIT AND NOT CMAKE_USE_WIN32_THREADS_INIT)

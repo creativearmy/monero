@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -205,6 +205,8 @@ namespace
    */
   bool checksum_test(std::vector<std::string> seed, uint32_t unique_prefix_length)
   {
+    if (seed.empty())
+      return false;
     // The last word is the checksum.
     std::string last_word = seed.back();
     seed.pop_back();
@@ -408,7 +410,7 @@ namespace crypto
       std::vector<std::string> words_store;
 
       uint32_t word_list_length = word_list.size();
-      // 8 bytes -> 3 words.  8 digits base 16 -> 3 digits base 1626
+      // 4 bytes -> 3 words.  8 digits base 16 -> 3 digits base 1626
       for (unsigned int i=0; i < len/4; i++, words += ' ')
       {
         uint32_t w1, w2, w3;

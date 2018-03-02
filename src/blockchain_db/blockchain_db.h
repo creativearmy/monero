@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 //
 // All rights reserved.
 //
@@ -36,7 +36,7 @@
 #include <boost/program_options.hpp>
 #include "common/command_line.h"
 #include "crypto/hash.h"
-#include "cryptonote_protocol/blobdatatype.h"
+#include "cryptonote_basic/blobdatatype.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/difficulty.h"
 #include "cryptonote_basic/hardfork.h"
@@ -536,6 +536,11 @@ protected:
   HardFork* m_hardfork;
 
 public:
+
+  /**
+   * @brief An empty constructor.
+   */
+  BlockchainDB(): m_open(false) { }
 
   /**
    * @brief An empty destructor.
@@ -1333,10 +1338,11 @@ public:
    * @brief get a txpool transaction's metadata
    *
    * @param txid the transaction id of the transation to lookup
+   * @param meta the metadata to return
    *
-   * @return the metadata associated with that transaction
+   * @return true if the tx meta was found, false otherwise
    */
-  virtual txpool_tx_meta_t get_txpool_tx_meta(const crypto::hash& txid) const = 0;
+  virtual bool get_txpool_tx_meta(const crypto::hash& txid, txpool_tx_meta_t &meta) const = 0;
 
   /**
    * @brief get a txpool transaction's blob

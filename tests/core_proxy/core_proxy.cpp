@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -42,8 +42,10 @@
 #include "common/command_line.h"
 #include "console_handler.h"
 #include "p2p/net_node.h"
+#include "p2p/net_node.inl"
 //#include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
+#include "cryptonote_protocol/cryptonote_protocol_handler.inl"
 #include "core_proxy.h"
 #include "version.h"
 
@@ -78,8 +80,7 @@ int main(int argc, char* argv[])
 
 
   po::options_description desc("Allowed options");
-  // tools::get_default_data_dir() can't be called during static initialization
-  command_line::add_arg(desc, cryptonote::arg_data_dir, tools::get_default_data_dir());
+  command_line::add_arg(desc, cryptonote::arg_data_dir);
   nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<tests::proxy_core> >::init_options(desc);
 
   po::variables_map vm;

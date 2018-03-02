@@ -1,4 +1,4 @@
-// Copyright (c) 2017, The Monero Project
+// Copyright (c) 2017-2018, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -28,7 +28,7 @@
 
 #include "include_base_utils.h"
 #include "file_io_utils.h"
-#include "cryptonote_protocol/blobdatatype.h"
+#include "cryptonote_basic/blobdatatype.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "fuzzer.h"

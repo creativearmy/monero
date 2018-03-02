@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2017, The Monero Project
+// Copyright (c) 2014-2018, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -33,6 +33,10 @@ using namespace epee;
 
 #include <atomic>
 #include <iostream>
+#include <boost/algorithm/string.hpp>
+#include "wipeable_string.h"
+#include "string_tools.h"
+#include "serialization/string.h"
 #include "cryptonote_format_utils.h"
 #include "cryptonote_config.h"
 #include "crypto/crypto.h"
@@ -78,6 +82,31 @@ static std::atomic<uint64_t> tx_hashes_calculated_count(0);
 static std::atomic<uint64_t> tx_hashes_cached_count(0);
 static std::atomic<uint64_t> block_hashes_calculated_count(0);
 static std::atomic<uint64_t> block_hashes_cached_count(0);
+
+#define CHECK_AND_ASSERT_THROW_MES_L1(expr, message) {if(!(expr)) {MWARNING(message); throw std::runtime_error(message);}}
+
+namespace cryptonote
+{
+  static inline unsigned char *operator &(ec_point &point) {
+    return &reinterpret_cast<unsigned char &>(point);
+  }
+  static inline const unsigned char *operator &(const ec_point &point) {
+    return &reinterpret_cast<const unsigned char &>(point);
+  }
+
+  // a copy of rct::addKeys, since we can't link to libringct to avoid circular dependencies
+  static void add_public_key(crypto::public_key &AB, const crypto::public_key &A, const crypto::public_key &B) {
+      ge_p3 B2, A2;
+      CHECK_AND_ASSERT_THROW_MES_L1(ge_frombytes_vartime(&B2, &B) == 0, "ge_frombytes_vartime failed at "+boost::lexical_cast<std::string>(__LINE__));
+      CHECK_AND_ASSERT_THROW_MES_L1(ge_frombytes_vartime(&A2, &A) == 0, "ge_frombytes_vartime failed at "+boost::lexical_cast<std::string>(__LINE__));
+      ge_cached tmp2;
+      ge_p3_to_cached(&tmp2, &B2);
+      ge_p1p1 tmp3;
+      ge_add(&tmp3, &A2, &tmp2);
+      ge_p1p1_to_p3(&A2, &tmp3);
+      ge_p3_tobytes(&AB, &A2);
+  }
+}
 
 namespace cryptonote
 {
@@ -145,6 +174,45 @@ namespace cryptonote
     return m;
   }
   //---------------------------------------------------------------
+  std::vector<crypto::public_key> get_subaddress_spend_public_keys(const cryptonote::account_keys &keys, uint32_t account, uint32_t begin, uint32_t end)
+  {
+    CHECK_AND_ASSERT_THROW_MES(begin <= end, "begin > end");
+
+    std::vector<crypto::public_key> pkeys;
+    pkeys.reserve(end - begin);
+    cryptonote::subaddress_index index = {account, begin};
+
+    ge_p3 p3;
+    ge_cached cached;
+    CHECK_AND_ASSERT_THROW_MES(ge_frombytes_vartime(&p3, (const unsigned char*)keys.m_account_address.m_spend_public_key.data) == 0,
+        "ge_frombytes_vartime failed to convert spend public key");
+    ge_p3_to_cached(&cached, &p3);
+
+    for (uint32_t idx = begin; idx < end; ++idx)
+    {
+      index.minor = idx;
+      if (index.is_zero())
+      {
+        pkeys.push_back(keys.m_account_address.m_spend_public_key);
+        continue;
+      }
+      const crypto::secret_key m = cryptonote::get_subaddress_secret_key(keys.m_view_secret_key, index);
+
+      // M = m*G
+      ge_scalarmult_base(&p3, (const unsigned char*)m.data);
+
+      // D = B + M
+      crypto::public_key D;
+      ge_p1p1 p1p1;
+      ge_add(&p1p1, &p3, &cached);
+      ge_p1p1_to_p3(&p3, &p1p1);
+      ge_p3_tobytes((unsigned char*)D.data, &p3);
+
+      pkeys.push_back(D);
+    }
+    return pkeys;
+  }
+  //---------------------------------------------------------------
   bool generate_key_image_helper(const account_keys& ack, const std::unordered_map<crypto::public_key, subaddress_index>& subaddresses, const crypto::public_key& out_key, const crypto::public_key& tx_public_key, const std::vector<crypto::public_key>& additional_tx_public_keys, size_t real_output_index, keypair& in_ephemeral, crypto::key_image& ki)
   {
     crypto::key_derivation recv_derivation = AUTO_VAL_INIT(recv_derivation);
@@ -181,6 +249,7 @@ namespace cryptonote
       crypto::derive_secret_key(recv_derivation, real_output_index, ack.m_spend_secret_key, scalar_step1); // computes Hs(a*R || idx) + b
 
       // step 2: add Hs(a || index_major || index_minor)
+      crypto::secret_key subaddr_sk;
       crypto::secret_key scalar_step2;
       if (received_index.is_zero())
       {
@@ -188,13 +257,32 @@ namespace cryptonote
       }
       else
       {
-        crypto::secret_key m = get_subaddress_secret_key(ack.m_view_secret_key, received_index);
-        sc_add((unsigned char*)&scalar_step2, (unsigned char*)&scalar_step1, (unsigned char*)&m);
+        subaddr_sk = get_subaddress_secret_key(ack.m_view_secret_key, received_index);
+        sc_add((unsigned char*)&scalar_step2, (unsigned char*)&scalar_step1, (unsigned char*)&subaddr_sk);
       }
 
       in_ephemeral.sec = scalar_step2;
-      crypto::secret_key_to_public_key(in_ephemeral.sec, in_ephemeral.pub);
-      CHECK_AND_ASSERT_MES(in_ephemeral.pub == out_key, false, "key image helper precomp: given output pubkey doesn't match the derived one");
+
+      if (ack.m_multisig_keys.empty())
+      {
+        // when not in multisig, we know the full spend secret key, so the output pubkey can be obtained by scalarmultBase
+        CHECK_AND_ASSERT_MES(crypto::secret_key_to_public_key(in_ephemeral.sec, in_ephemeral.pub), false, "Failed to derive public key");
+      }
+      else
+      {
+        // when in multisig, we only know the partial spend secret key. but we do know the full spend public key, so the output pubkey can be obtained by using the standard CN key derivation
+        CHECK_AND_ASSERT_MES(crypto::derive_public_key(recv_derivation, real_output_index, ack.m_account_address.m_spend_public_key, in_ephemeral.pub), false, "Failed to derive public key");
+        // and don't forget to add the contribution from the subaddress part
+        if (!received_index.is_zero())
+        {
+          crypto::public_key subaddr_pk;
+          CHECK_AND_ASSERT_MES(crypto::secret_key_to_public_key(subaddr_sk, subaddr_pk), false, "Failed to derive public key");
+          add_public_key(in_ephemeral.pub, in_ephemeral.pub, subaddr_pk);
+        }
+      }
+
+      CHECK_AND_ASSERT_MES(in_ephemeral.pub == out_key,
+           false, "key image helper precomp: given output pubkey doesn't match the derived one");
     }
 
     crypto::generate_key_image(in_ephemeral.pub, in_ephemeral.sec, ki);
@@ -584,17 +672,21 @@ namespace cryptonote
   bool is_out_to_acc(const account_keys& acc, const txout_to_key& out_key, const crypto::public_key& tx_pub_key, const std::vector<crypto::public_key>& additional_tx_pub_keys, size_t output_index)
   {
     crypto::key_derivation derivation;
-    generate_key_derivation(tx_pub_key, acc.m_view_secret_key, derivation);
+    bool r = generate_key_derivation(tx_pub_key, acc.m_view_secret_key, derivation);
+    CHECK_AND_ASSERT_MES(r, false, "Failed to generate key derivation");
     crypto::public_key pk;
-    derive_public_key(derivation, output_index, acc.m_account_address.m_spend_public_key, pk);
+    r = derive_public_key(derivation, output_index, acc.m_account_address.m_spend_public_key, pk);
+    CHECK_AND_ASSERT_MES(r, false, "Failed to derive public key");
     if (pk == out_key.key)
       return true;
     // try additional tx pubkeys if available
     if (!additional_tx_pub_keys.empty())
     {
       CHECK_AND_ASSERT_MES(output_index < additional_tx_pub_keys.size(), false, "wrong number of additional tx pubkeys");
-      generate_key_derivation(additional_tx_pub_keys[output_index], acc.m_view_secret_key, derivation);
-      derive_public_key(derivation, output_index, acc.m_account_address.m_spend_public_key, pk);
+      r = generate_key_derivation(additional_tx_pub_keys[output_index], acc.m_view_secret_key, derivation);
+      CHECK_AND_ASSERT_MES(r, false, "Failed to generate key derivation");
+      r = derive_public_key(derivation, output_index, acc.m_account_address.m_spend_public_key, pk);
+      CHECK_AND_ASSERT_MES(r, false, "Failed to derive public key");
       return pk == out_key.key;
     }
     return false;
@@ -1000,7 +1092,7 @@ namespace cryptonote
     block_hashes_cached = block_hashes_cached_count;
   }
   //---------------------------------------------------------------
-  crypto::secret_key encrypt_key(crypto::secret_key key, const std::string &passphrase)
+  crypto::secret_key encrypt_key(crypto::secret_key key, const epee::wipeable_string &passphrase)
   {
     crypto::hash hash;
     crypto::cn_slow_hash(passphrase.data(), passphrase.size(), hash);
@@ -1008,7 +1100,7 @@ namespace cryptonote
     return key;
   }
   //---------------------------------------------------------------
-  crypto::secret_key decrypt_key(crypto::secret_key key, const std::string &passphrase)
+  crypto::secret_key decrypt_key(crypto::secret_key key, const epee::wipeable_string &passphrase)
   {
     crypto::hash hash;
     crypto::cn_slow_hash(passphrase.data(), passphrase.size(), hash);
