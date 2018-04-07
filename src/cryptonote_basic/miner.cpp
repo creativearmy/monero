@@ -228,7 +228,7 @@ namespace cryptonote
   {
     // configure node agent port to push mining work to
 	m_mining_pool_node_agent_port = 3001;
-	if (testnet) m_mining_pool_node_agent_port = 3002;
+	if (nettype == cryptonote::TESTNET) m_mining_pool_node_agent_port = 3002;
 	
     if(command_line::has_arg(vm, arg_extra_messages))
     {
